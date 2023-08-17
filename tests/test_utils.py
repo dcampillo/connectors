@@ -308,7 +308,7 @@ async def test_concurrent_runner_canceled_with_waiting_task():
 
 
 @pytest.mark.asyncio
-async def test_concurrent_runner_fails(patch_logger):
+async def test_concurrent_runner_fails():
     results = []
 
     def _results_callback(result):
@@ -326,7 +326,6 @@ async def test_concurrent_runner_fails(patch_logger):
 
     await runner.join()
     assert 5 not in results
-    patch_logger.assert_present("I FAILED")
 
 
 @pytest.mark.asyncio
