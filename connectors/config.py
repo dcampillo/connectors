@@ -105,6 +105,7 @@ def _default_config():
             "sharepoint_server": "connectors.sources.sharepoint_server:SharepointServerDataSource",
             "slack": "connectors.sources.slack:SlackDataSource",
             "microsoft_teams": "connectors.sources.microsoft_teams:MicrosoftTeamsDataSource",
+            "sonarr_tv" : "connectors.sources.sonartv:SonarrTVDataSource"
             "zoom": "connectors.sources.zoom:ZoomDataSource",
             "box": "connectors.sources.box:BoxDataSource",
         },
