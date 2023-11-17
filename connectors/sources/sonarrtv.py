@@ -3,7 +3,8 @@
 import requests
 import json
 from connectors.source import BaseDataSource, ConfigurableFieldValueError
-
+import aiohttp
+import asyncio
 
 class SonarrTVDataSource(BaseDataSource):
     """SonarrTV"""
@@ -59,7 +60,7 @@ class SonarrTVDataSource(BaseDataSource):
         
 
 class SonnarrConnector():
-    def __init__(self, host, apikey) -> None:
+    def __init__(self, host:str, apikey:str) -> None:
         self.host = host
         self.apikey = apikey
         self.series_api = f"{host}/api/v3/series"
@@ -74,35 +75,65 @@ class SonnarrConnector():
         episodes_collection = []
 
         tv_series = await self.__get_series()
-        print(type(tv_series))
-
         
-        for serie in tv_series:
-            episodes = await self.__get_episodes(serie["id"])
-            for episode in episodes:
-                episode_detail = {
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+            for serie in tv_series:
+                task = asyncio.create_task(self.__get_episodes(serie, session))
+                tasks.append(task)
+            res = await asyncio.gather(*tasks)
+
+            
+            for eps in res:
+                
+                for episode in eps["episodes"]:
+                    episode_detail = {
                     "_id" : episode["id"],
                     "seasonNumber" : episode["seasonNumber"],
                     "episodeNumber" : episode["episodeNumber"],
                     "title" : episode["title"],
                     "overview" : episode["overview"] if "overview" in episode else "",
                     "seriesId" : episode["id"],
-                    "serieTitle" : serie["title"],
+                    "serieTitle" : eps["serieTitle"],
                     "hasFile" : episode["hasFile"]
                 }
 
-                yield episode_detail, None
+                    yield episode_detail, None
+                    
+
+        # for serie in tv_series:
+        #     episodes = await self.__get_episodes(serie["id"])
+        #     for episode in episodes:
+        #         episode_detail = {
+        #             "_id" : episode["id"],
+        #             "seasonNumber" : episode["seasonNumber"],
+        #             "episodeNumber" : episode["episodeNumber"],
+        #             "title" : episode["title"],
+        #             "overview" : episode["overview"] if "overview" in episode else "",
+        #             "seriesId" : episode["id"],
+        #             "serieTitle" : serie["title"],
+        #             "hasFile" : episode["hasFile"]
+        #         }
+
+        #         yield episode_detail, None
                 #episodes_collection.append(episode_detail)
 
         #return episodes_collection
+
+
 
     async def __get_series(self):
         series = requests.get(self.series_api, headers=self.api_header)
         return json.loads(series.content)
 
-    async def __get_episodes(self, serie_id):
+    async def __get_episodes(self, serie, Session):
+        serie_id = serie["id"]
+        serie_title = serie["title"]
         endpoint = self.episodes_api + f"/?seriesId={serie_id}"
-        series = requests.get(endpoint, headers=self.api_header)
-        return json.loads(series.content)
+        headers = { "X-api-key": self.apikey}
+        async with Session.get(endpoint, headers=self.api_header) as r:
+            episodes = await r.json()
+        
+            return {"id": serie_id, "serieTitle": serie_title, "episodes" : episodes}
 
 
