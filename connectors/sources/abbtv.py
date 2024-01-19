@@ -30,23 +30,43 @@ class ABBTVDataSource(BaseDataSource):
     def get_default_configuration(cls):
         return {
             "endpoint": {
-                "label": "Endpoint",
+                "label": "API Endpoint",
+                "tooltip": "The base domain of the application: e.g. https://abbtv.inside.abb.com",
                 "order": 1,
                 "type": "str",
                 "required": True
             },
-            "bearer": {
-                "label": "Bearer",
+            "username": {
+                "label": "Username",
+                "tooltip": "The username used to get the Bearer token",
                 "order": 2,
+                "required": True,
+                "type": "str",
+            },
+            "password": {
+                "label": "Password",
+                "tooltip": "The password used to get the Bearer token",
+                "order": 3,
                 "required": True,
                 "sensitive": True,
                 "type": "str",
             },
+            "pagesize": {
+                "label": "Page size",
+                "tooltip": "Number of posts to retrieve per page",
+                "order": 4,
+                "required": True,
+                "sensitive": True,
+                "type": "int",
+                "value": 100
+            },
             "timestamp_id": {
                 "label": "Timestamp field id",
-                "order": 3,
+                "tooltip": "Name of the field to use as timestamp",
+                "order": 5,
                 "type": "str",
-                "required": False
+                "required": True,
+                "value": "modified_gmt"
             },
             "direct_connection": {
                 "display": "toggle",
@@ -59,27 +79,32 @@ class ABBTVDataSource(BaseDataSource):
     
     async def get_docs(self, filtering=None):
         
-        hygraph = WPConnector(self.configuration["endpoint"],  self.configuration["bearer"])
-        async for doc in hygraph.get_all():
+        wpc = WPConnector(self.configuration["endpoint"], self.configuration["username"], self.configuration["password"], timestamp_id=self.configuration["timestamp_id"])
+        async for doc in wpc.get_all():
             yield doc
-        # print("Gettings all docs")
-        # return sonarr.get_all()
-
-        
 
 class WPConnector():
 
-    def __init__(self, endpoint, bearer, timestamp_id=None) -> None:
+    def __init__(self, endpoint:str, username:str, password:str, timestamp_id=None) -> None:
         self.endpoint = endpoint
-        self.bearer = bearer
+        self.bearer = self.__get_bearer(username, password)
         self.timestamp_id = timestamp_id
         self.authorization_headers = {"Authorization": self.bearer}
-        self.categories = self.get_categories()
-        self.tags = self.get_tags()
+        self.categories = self.__get_categories()
+        self.tags = self.__get_tags()
     
-    def get_categories(self):
+    def __get_bearer(self,username, password):
+        categories_endpoint = self.endpoint + f"/wp-json/jwt-auth/v1/token?username={username}&password={password}"
+        req = requests.post(categories_endpoint)
+        if req.status_code == 200:
+            content = json.loads(req.content)
+            return content["token"]
+        else:
+            return None
+
+    def __get_categories(self):
         categories_endpoint = self.endpoint + "/wp-json/wp/v2/categories?_fields=id,name"
-        req = requests.get(categories_endpoint, auth=('david', '0xVJ$z!54zi1!AxGjc'), headers=self.authorization_headers)
+        req = requests.get(categories_endpoint, headers=self.authorization_headers)
         categories = json.loads(req.content)
 
         categories_dict = {}
@@ -87,12 +112,11 @@ class WPConnector():
         for category in categories:
             categories_dict[category["id"]] = category["name"]
 
-
         return categories_dict
     
-    def get_tags(self):
+    def __get_tags(self):
         tags_endpoint = self.endpoint + "/wp-json/wp/v2/tags?_fields=id,name"
-        req = requests.get(tags_endpoint, auth=('david', '0xVJ$z!54zi1!AxGjc'),headers=self.authorization_headers)
+        req = requests.get(tags_endpoint, headers=self.authorization_headers)
         tags = json.loads(req.content)
 
         tags_dict = {}
@@ -102,25 +126,24 @@ class WPConnector():
         return tags_dict
 
     async def get_all(self):
-        
-        episodes_collection = []
-        dl_all = False
+        stop_retrieving_results = False
         current_page = 1
-        while dl_all == False:
+
+        while stop_retrieving_results == False:
             wp_posts = await self.__get_posts(Page=current_page)
-            if wp_posts:
+            if wp_posts: 
                 for wp_post in wp_posts:
                     serialized_doc = await self.__serialize_document(wp_post)
                     yield serialized_doc, None
                 current_page += 1
             else:
-                dl_all = True
+                stop_retrieving_results = True
             
             
 
     async def __get_posts(self, PageSize=100, Page=1):
-        posts_endpoint = self.endpoint + f"/wp-json/wp/v2/posts?_fields=id,title,excerpt,modified_gmt,link,content,tags,categories&per_page={PageSize}&page={Page}"
-        posts = requests.get(posts_endpoint, auth=('david', '0xVJ$z!54zi1!AxGjc'), headers=self.authorization_headers)
+        posts_endpoint = self.endpoint + f"/wp-json/wp/v2/posts?_fields=id,title,excerpt,{self.timestamp_id},link,content,tags,categories&per_page={PageSize}&page={Page}"
+        posts = requests.get(posts_endpoint, headers=self.authorization_headers)
         if posts.status_code == 200:
             return json.loads(posts.content)
         else:
@@ -130,10 +153,9 @@ class WPConnector():
         doc = {}
         doc["_id"] = data["id"]
         doc["title"] = data["title"]["rendered"]
-        doc["_timestamp"] = data["modified_gmt"]
+        doc["_timestamp"] = data[self.timestamp_id]
         doc["body_content"] = data["content"]["rendered"]
-        doc["body_content"] = data["content"]["rendered"]
-
+        doc["meta_description"] = data["excerpt"]["rendered"]
         doc["url"] = data["link"]
         
         if "tags" in data:
@@ -141,19 +163,6 @@ class WPConnector():
         
         if "categories" in data:
             doc["categories"] = await self.map_categories(data["categories"])
-        
-        # for key in data.keys():
-        #     if key == "updatedAt":
-        #         doc["_timestamp"] = data[key]
-        #     elif key == "id":
-        #         doc["_id"] = data[key]
-        #     elif key == "thumbnail":
-        #         doc["thumbnailurl"] = data[key]["url"]
-        #     # elif key == "is_internal":
-        #     #      bVal = data[key]["is_internal"]
-        #     #      doc["is_internal"] = "Yes" if bVal == True else "No"
-        #     else:
-        #         doc[key] = data[key]
 
         return doc
     
