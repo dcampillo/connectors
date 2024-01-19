@@ -99,34 +99,12 @@ class SonnarrConnector():
                 }
 
                     yield episode_detail, None
-                    
-
-        # for serie in tv_series:
-        #     episodes = await self.__get_episodes(serie["id"])
-        #     for episode in episodes:
-        #         episode_detail = {
-        #             "_id" : episode["id"],
-        #             "seasonNumber" : episode["seasonNumber"],
-        #             "episodeNumber" : episode["episodeNumber"],
-        #             "title" : episode["title"],
-        #             "overview" : episode["overview"] if "overview" in episode else "",
-        #             "seriesId" : episode["id"],
-        #             "serieTitle" : serie["title"],
-        #             "hasFile" : episode["hasFile"]
-        #         }
-
-        #         yield episode_detail, None
-                #episodes_collection.append(episode_detail)
-
-        #return episodes_collection
-
-
 
     async def __get_series(self):
         series = requests.get(self.series_api, headers=self.api_header)
         return json.loads(series.content)
 
-    async def __get_episodes(self, serie, Session):
+    async def __get_episodes(self, serie, Session:aiohttp.ClientSession):
         serie_id = serie["id"]
         serie_title = serie["title"]
         endpoint = self.episodes_api + f"/?seriesId={serie_id}"
