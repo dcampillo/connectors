@@ -81,6 +81,7 @@ def _default_config():
             "log_level": "INFO",
         },
         "sources": {
+            "abbtv": "connectors.sources.abbtv:ABBTVDataSource",
             "azure_blob_storage": "connectors.sources.azure_blob_storage:AzureBlobStorageDataSource",
             "confluence": "connectors.sources.confluence:ConfluenceDataSource",
             "dir": "connectors.sources.directory:DirectoryDataSource",
@@ -89,6 +90,8 @@ def _default_config():
             "gmail": "connectors.sources.gmail:GMailDataSource",
             "google_cloud_storage": "connectors.sources.google_cloud_storage:GoogleCloudStorageDataSource",
             "google_drive": "connectors.sources.google_drive:GoogleDriveDataSource",
+            "hygraph": "connectors.sources.hygraph:HygraphDataSource",
+            "infosys": "connectors.sources.infosys:InfosysDataSource",
             "jira": "connectors.sources.jira:JiraDataSource",
             "mongodb": "connectors.sources.mongo:MongoDataSource",
             "mssql": "connectors.sources.mssql:MSSQLDataSource",

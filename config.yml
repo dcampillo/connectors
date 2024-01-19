@@ -1,3 +1,34 @@
+connectors:
+-
+  connector_id: "ZYDE3IsBkIiwpmz-m5dn"
+  service_type: "infosys"
+-
+  connector_id: "XoCu3IsBkIiwpmz-7pd6"
+  service_type: "infosys"
+-
+  connector_id: "84ChuYsBkIiwpmz-8YlU"
+  service_type: "mongodb"
+
+-
+  connector_id: "VYBKyYsBkIiwpmz-yI5G"
+  service_type: "hygraph"
+
+-
+  connector_id: "-ICnuYsBkIiwpmz-h4l_"
+  service_type: "mongodb"
+
+-
+  connector_id: "_IDx2IsBkIiwpmz-iJV1"
+  service_type: "sonarr_tv"
+
+-
+  connector_id: "y0K1IY0BzKqSBaqbmOFR"
+  service_type: "abbtv"
+
+elasticsearch:
+  host: "https://elastic.zorglub.info:443"
+  api_key: "LW9EdzJJc0JrSWl3cG16LVlwVW46Q2VObDFZMXRURXVYZzUtZTlVUVQwQQ=="
+
 ## ================= Elastic Connectors Configuration ==================
 #
 ## NOTE: Elastic Connectors comes with reasonable defaults.
