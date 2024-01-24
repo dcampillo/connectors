@@ -6,6 +6,7 @@ from connectors.source import BaseDataSource, ConfigurableFieldValueError
 import time
 import aiohttp
 from datetime import datetime
+import html
 
 class ABBTVDataSource(BaseDataSource):
     """ABBTV"""
@@ -92,15 +93,15 @@ class ABBTVDataSource(BaseDataSource):
 class WPConnector():
     ISO_ZULU_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
-    def __init__(self, endpoint:str, username:str, password:str, timestamp_id=None, page_size=100, last_sync=None) -> None:
+    def __init__(self, endpoint:str, username:str, password:str, timestamp_id=None, page_size=100) -> None:
         self.endpoint = endpoint
         self.page_size=page_size
         self.timestamp_id = timestamp_id
-        self.last_sync = last_sync
 
         # Get bearer and set auth header
         self.bearer = self.__get_bearer(username, password)
-        self.authorization_headers = {"Authorization": f"Bearer {self.bearer}"}
+        self.authorization_headers = {"Authorization": f"Bearer {self.bearer}", "User-Agent" : "PostmanRuntime/7.35.0" }
+
         
         # Get list of categories and tags to remap values when creating doc for ES
         print("Loading tags...")
@@ -110,15 +111,24 @@ class WPConnector():
         print("Loading categories...")
         self.categories = self.__get_categories()
         print(f"Categories loaded: {len(self.categories)}")
+
+        print("Loading authors...")
+        self.authors = self.__get_users()
+        print(f"Authors loaded: {len(self.categories)}")
+
     
     def __get_bearer(self,username, password):
-        tags_endpoint = self.endpoint + f"/wp-json/jwt-auth/v1/token?username={username}&password={password}"
-        response = requests.post(tags_endpoint)
-        if response.status_code == 200:
-            content = json.loads(response.content)
+        print("Getting bearer")
+        auth_endpoint = self.endpoint + f"/wp-json/jwt-auth/v1/token?username={username}&password={password}"
+
+        _header = { "User-Agent" : "PostmanRuntime/7.35.0"}
+        req = requests.post(auth_endpoint, headers=_header)
+        
+        if req.status_code == 200:
+            content = json.loads(req.content)
             return content["token"]
         else:
-            raise Exception(f"Unable to get Authorization Token : HTTP {response.status_code}")
+            raise Exception(f"Unable to get Authorization Token : HTTP {req.status_code}")
 
     def __get_categories(self):
         stop_retrieving_results = False
@@ -173,6 +183,36 @@ class WPConnector():
 
         return tags_dict
 
+    def __get_users(self):
+        stop_retrieving_results = False
+        current_page = 1
+        users_dict = {}
+    
+        while stop_retrieving_results == False:
+            users_endpoint = self.endpoint + f"/wp-json/wp/v2/users?_fields=id,name,link&per_page={self.page_size}&page={current_page}"
+            try:
+                response = requests.get(users_endpoint, headers=self.authorization_headers)
+            except requests.exceptions.RequestException as e:  # This is the correct syntax
+                raise Exception(e)
+            if response.status_code != 200:
+                raise Exception(f"Unable to fetch tags : HTTP {response.status_code} {users_endpoint}")
+            users = json.loads(response.content)
+            
+            if users:
+                for user in users:
+                    user_info = {}
+                    user_info["id"] = user["id"]
+                    user_info["name"] = user["name"]
+                    user_info["link"] = user["link"]
+
+                    users_dict[user["id"]] = user_info
+                current_page += 1
+                print(".", end='', flush=True)
+            else:
+                stop_retrieving_results=True
+
+        return users_dict
+    
     async def get_all(self):
         stop_retrieving_results = False
         current_page = 1
@@ -193,7 +233,7 @@ class WPConnector():
                 stop_retrieving_results = True
 
     async def __get_posts(self, page_size=100, page=1):
-        posts_endpoint = self.endpoint + f"/wp-json/wp/v2/posts?_fields=id,title,excerpt,{self.timestamp_id},link,content,tags,categories&per_page={page_size}&page={page}"
+        posts_endpoint = self.endpoint + f"/wp-json/wp/v2/posts?_fields=id,title,excerpt,author,{self.timestamp_id},link,content,tags,categories&per_page={page_size}&page={page}"
         
         posts = requests.get(posts_endpoint, headers=self.authorization_headers)
         if posts.status_code == 200:
@@ -206,13 +246,20 @@ class WPConnector():
         _timestamp = datetime.strptime(data[self.timestamp_id], '%Y-%m-%dT%H:%M:%S')
             
         doc["_id"] = str(data["id"])
-        doc["title"] = data["title"]["rendered"]
+        doc["title"] = html.unescape(data["title"]["rendered"])
         doc["timestamp"] = _timestamp.strftime(self.ISO_ZULU_TIMESTAMP_FORMAT)
         doc["body_content"] = data["content"]["rendered"]
         doc["meta_description"] = data["excerpt"]["rendered"]
         doc["url"] = data["link"]
-        doc["tags"] = data["categories"]
-        doc["categories"] = data["tags"]
+        doc["tags"] = data["tags"]
+        doc["categories"] = data["categories"]
+        doc["author"] = data["author"]
+        
+        author_infos = self.authors.get(data["author"])
+        if author_infos:
+            doc["author_name"] = author_infos.get("name")
+            doc["author_link"] = author_infos.get("link")
+
         if "tags" in data:
             doc["tags_unwrapped"] = await self.map_tags(data["tags"])
         
@@ -225,15 +272,22 @@ class WPConnector():
         tags_name = []
 
         for tag in tags:
-            tags_name.append(self.tags.get(tag))
-
+            tag_name = self.tags.get(tag)
+            if tag_name:
+                tags_name.append(html.unescape(tag_name))
+            else:
+                tags_name.append(tag)
         return tags_name
     
     async def map_categories(self, categories):
         categories_name = []
 
         for category in categories:
-            categories_name.append(self.categories.get(category))
+            category_name = self.categories.get(category)
+            if category_name:
+                categories_name.append(html.unescape(category_name))
+            else:
+                categories_name.append(category)
 
         return categories_name
     
